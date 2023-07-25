@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "antikythera-vm",
+    "antikythera-ir"
+]
+
+resolver = "2"
