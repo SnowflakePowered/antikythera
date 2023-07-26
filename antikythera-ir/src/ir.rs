@@ -1,4 +1,4 @@
-use crate::arena::Handle;
+use crate::arena::{Arena, Handle};
 
 pub trait AddressSize: bincode::Encode + bincode::Decode + 'static {}
 
@@ -7,9 +7,9 @@ impl AddressSize for u16 {}
 impl AddressSize for u32 {}
 impl AddressSize for u64 {}
 
-/// An immediate value.
+/// An untyped immediate value.
 #[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
-pub enum ImmediateValue {
+pub enum Immediate {
     One(u8),
     Two(u16),
     Four(u32),
@@ -17,28 +17,72 @@ pub enum ImmediateValue {
 }
 
 #[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+pub enum Width {
+    /// The full width of the program address size.
+    /// For address size 8, this is equivalent to byte width.
+    Word,
+    /// Half the width of the program address size.
+    /// For address size 16 and below, this is equivalent to byte width.
+    Half,
+    /// 1 fourth the width of the program address size.
+    /// For address size 32 and below, this is equivalent to byte width
+    Quarter,
+    /// An absolute length of 1 byte (8 bits) wide.
+    Byte,
+}
+
+#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Location<A: AddressSize> {
-    Register(u8),
+    /// Load the location from the given register.
+    Register(Register),
+    /// Use the statically known address.
     Address(A),
+    /// Use the location defined as the given register + offset
+    Offset(Register, A),
 }
 
 #[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Operand<A: AddressSize> {
-    Location(Location<A>),
-    Immediate(ImmediateValue),
+    Load(Location<A>, Width),
+    Immediate(Immediate),
 }
 
 #[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
-pub enum Expression<A: AddressSize> {
-    Equal(Handle<Expression<A>>, Handle<Expression<A>>),
-    GreaterThan(Handle<Expression<A>>, Handle<Expression<A>>),
-    GreaterThanEqual(Handle<Expression<A>>, Handle<Expression<A>>),
-    LessThan(Handle<Expression<A>>, Handle<Expression<A>>),
-    LessThanEqual(Handle<Expression<A>>, Handle<Expression<A>>),
-    And(Handle<Expression<A>>, Handle<Expression<A>>),
-    Or(Handle<Expression<A>>, Handle<Expression<A>>),
-    Not(Handle<Expression<A>>),
+pub enum BoolExpr<A: AddressSize> {
+    Equal(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
+    GreaterThan(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
+    GreaterThanEqual(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
+    LessThan(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
+    LessThanEqual(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
+    And(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
+    Or(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
+    Not(Handle<BoolExpr<A>>),
     Literal(Operand<A>),
+}
+
+#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode, Clone, Copy)]
+pub struct Register(u8);
+
+#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+pub enum Overflow {
+    Saturating,
+    Wrapping,
+}
+
+#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+pub enum MathOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Shl,
+    Shr,
+}
+
+#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+pub enum NumType {
+    Integer,
+    Floating,
 }
 
 /// Represents an operation on the antikythera virtual machine.
@@ -54,27 +98,26 @@ pub enum Op<A: AddressSize> {
     /// Load the given immediate value into the given register.
     LoadImmediate {
         value: A,
-        register: u8,
+        register: Register,
     },
-    /// Increment the given register. On overflow, the register will wrap.
-    Increment {
-        value: A,
-        register: u8,
-    },
-    /// Decrement the given register. On underflow, the register will wrap.
-    Decrement {
-        value: A,
-        register: u8,
+    /// Do math on the register
+    Math {
+        input: Operand<A>,
+        output: Register,
+        op: MathOp,
+        overflow: Overflow,
+        load_type: NumType,
+        store_type: NumType,
     },
     /// Load the value at the guest address into the register.
     LoadMemory {
         source: A,
-        register: u8,
+        register: Register,
     },
     /// Write the value stored in the register into the location `dest`
     Store {
         dest: Location<A>,
-        register: u8,
+        register: Register,
     },
 
     // Memory operations
@@ -83,7 +126,7 @@ pub enum Op<A: AddressSize> {
     /// Cheat operations involving 8, 16, 32, and 64 bit immediate writes
     /// desugar to this operation.
     WriteImmediate {
-        value: ImmediateValue,
+        value: Immediate,
         dest: Location<A>,
     },
     /// Write the provided vector of bytes into the destination.
@@ -103,7 +146,7 @@ pub enum Op<A: AddressSize> {
     /// Beginning at `dest`, fill the memory with the provided immediate value `length` times, skipping
     /// offset
     MemoryFill {
-        value: ImmediateValue,
+        value: Immediate,
         dest: Location<A>,
         length: u64,
         offset: A,
@@ -111,7 +154,7 @@ pub enum Op<A: AddressSize> {
 
     // Branch to the block if the expression evaluates to true.
     Branch {
-        cond: Option<Handle<Expression<A>>>,
+        cond: Option<Handle<BoolExpr<A>>>,
         target: Handle<Block<A>>,
     },
 
@@ -123,5 +166,24 @@ pub struct Block<A: AddressSize>(Vec<Op<A>>);
 impl<A: AddressSize> Block<A> {
     pub fn new(instrs: impl IntoIterator<Item = Op<A>>) -> Self {
         Block(instrs.into_iter().collect())
+    }
+}
+
+pub struct Program<A: AddressSize> {
+    pub entry: Handle<Block<A>>,
+    pub blocks: Arena<Block<A>>,
+    pub exprs: Arena<BoolExpr<A>>,
+}
+
+pub struct ProgramBuilder<A: AddressSize> {
+    pub blocks: Arena<Block<A>>,
+    pub exprs: Arena<BoolExpr<A>>,
+}
+
+impl<A: AddressSize> ProgramBuilder<A> {
+    pub fn new() -> Self {
+        let exprs = Arena::new();
+        let mut blocks = Arena::new();
+        Self { blocks, exprs }
     }
 }
