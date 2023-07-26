@@ -8,7 +8,7 @@ impl AddressSize for u32 {}
 impl AddressSize for u64 {}
 
 /// An untyped immediate value.
-#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Immediate {
     One(u8),
     Two(u16),
@@ -16,7 +16,33 @@ pub enum Immediate {
     Eight(u64),
 }
 
-#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+impl From<u8> for Immediate {
+    fn from(value: u8) -> Self {
+        Immediate::One(value)
+    }
+}
+
+impl From<u16> for Immediate {
+    fn from(value: u16) -> Self {
+        Immediate::Two(value)
+    }
+}
+
+impl From<u32> for Immediate {
+    fn from(value: u32) -> Self {
+        Immediate::Four(value)
+    }
+}
+
+
+impl From<u64> for Immediate {
+    fn from(value: u64) -> Self {
+        Immediate::Eight(value)
+    }
+}
+
+
+#[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Width {
     /// The full width of the program address size.
     /// For address size 8, this is equivalent to byte width.
@@ -31,7 +57,7 @@ pub enum Width {
     Byte,
 }
 
-#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Location<A: AddressSize> {
     /// Load the location from the given register.
     Register(Register),
@@ -41,35 +67,22 @@ pub enum Location<A: AddressSize> {
     Offset(Register, A),
 }
 
-#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Operand<A: AddressSize> {
     Load(Location<A>, Width),
     Immediate(Immediate),
 }
 
-#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
-pub enum BoolExpr<A: AddressSize> {
-    Equal(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
-    GreaterThan(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
-    GreaterThanEqual(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
-    LessThan(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
-    LessThanEqual(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
-    And(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
-    Or(Handle<BoolExpr<A>>, Handle<BoolExpr<A>>),
-    Not(Handle<BoolExpr<A>>),
-    Literal(Operand<A>),
-}
-
-#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode, Clone, Copy)]
+#[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode, Clone, Copy)]
 pub struct Register(u8);
 
-#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Overflow {
     Saturating,
     Wrapping,
 }
 
-#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum MathOp {
     Add,
     Sub,
@@ -79,7 +92,7 @@ pub enum MathOp {
     Shr,
 }
 
-#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum NumType {
     Integer,
     Floating,
@@ -89,7 +102,7 @@ pub enum NumType {
 ///
 /// - A cheat with address size `A` has access to 256 persistent
 ///   registers (`u8::MAX`) of width `A`
-#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Op<A: AddressSize> {
     /// Do nothing.
     NoOperation,
@@ -154,14 +167,14 @@ pub enum Op<A: AddressSize> {
 
     // Branch to the block if the expression evaluates to true.
     Branch {
-        cond: Option<Handle<BoolExpr<A>>>,
+        cond: Option<Handle<Expr<A>>>,
         target: Handle<Block<A>>,
     },
 
     Return,
 }
 
-#[derive(Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub struct Block<A: AddressSize>(Vec<Op<A>>);
 impl<A: AddressSize> Block<A> {
     pub fn new(instrs: impl IntoIterator<Item = Op<A>>) -> Self {
@@ -172,12 +185,12 @@ impl<A: AddressSize> Block<A> {
 pub struct Program<A: AddressSize> {
     pub entry: Handle<Block<A>>,
     pub blocks: Arena<Block<A>>,
-    pub exprs: Arena<BoolExpr<A>>,
+    pub exprs: Arena<Expr<A>>,
 }
 
 pub struct ProgramBuilder<A: AddressSize> {
     pub blocks: Arena<Block<A>>,
-    pub exprs: Arena<BoolExpr<A>>,
+    pub exprs: Arena<Expr<A>>,
 }
 
 impl<A: AddressSize> ProgramBuilder<A> {
@@ -187,3 +200,164 @@ impl<A: AddressSize> ProgramBuilder<A> {
         Self { blocks, exprs }
     }
 }
+
+// macro_rules! imm {
+//     ($val:ident u8) => {
+//         Immediate::One($val)
+//     };
+//     ($val:literal u8) => {
+//         Immediate::One($val)
+//     };
+//     ($val:ident u16) => {
+//         Immediate::Two($val)
+//     };
+//     ($val:literal u16) => {
+//         Immediate::Two($val)
+//     };
+//     ($val:ident u32) => {
+//         Immediate::Four($val)
+//     };
+//     ($val:literal u32) => {
+//         Immediate::Four($val)
+//     };
+//     ($val:ident u64) => {
+//         Immediate::Eight($val)
+//     };
+//     ($val:literal u64) => {
+//         Immediate::Eight($val)
+//     };
+// }
+
+#[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
+pub enum Expr<A: AddressSize> {
+    Equal(Handle<Expr<A>>, Handle<Expr<A>>),
+    GreaterThan(Handle<Expr<A>>, Handle<Expr<A>>),
+    GreaterThanEqual(Handle<Expr<A>>, Handle<Expr<A>>),
+    LessThan(Handle<Expr<A>>, Handle<Expr<A>>),
+    LessThanEqual(Handle<Expr<A>>, Handle<Expr<A>>),
+    And(Handle<Expr<A>>, Handle<Expr<A>>),
+    Or(Handle<Expr<A>>, Handle<Expr<A>>),
+    Not(Handle<Expr<A>>),
+    Literal(Operand<A>),
+}
+
+macro_rules! expr {
+    ($a:ident, imm $op:expr) => {
+        expr!(imm $op)
+    };
+    (imm $op:expr) => {
+        Expr::Literal(Operand::Immediate(Immediate::from($op)))
+    };
+    (load w $reg:expr) => {
+        Expr::Literal(Operand::Load($reg, Width::Word))
+    };
+    ($a:ident, load w $reg:expr) => {
+        expr!(load w $reg)
+    };
+    (load h $reg:expr) => {
+        Expr::Literal(Operand::Load($reg, Width::Half))
+    };
+    ($a:ident, load h $reg:expr) => {
+        expr!(load h $reg)
+    };
+    (load q $reg:expr) => {
+        Expr::Literal(Operand::Load($reg, Width::Quarter))
+    };
+    ($a:ident, load q $reg:expr) => {
+        expr!(load q $reg)
+    };
+    (load b $reg:expr) => {
+        Expr::Literal(Operand::Load($reg, Width::Byte))
+    };
+    ($a:ident, load b $reg:expr) => {
+        expr!(load b $reg)
+    };
+    ($a:ident, ($($lhs:tt)*) == ($($rhs:tt)*)) => {
+        {
+            let lhs = expr!($a, $($lhs)*);
+            let lhs = $a.append(lhs);
+            let rhs = expr!($a, $($rhs)*);
+            let rhs = $a.append(rhs);
+            Expr::Equal(lhs, rhs)
+        }
+    };
+    ($a:ident, ($($lhs:tt)*) > ($($rhs:tt)*)) => {
+        {
+            let lhs = expr!($a, $($lhs)*);
+            let lhs = $a.append(lhs);
+            let rhs = expr!($a, $($rhs)*);
+            let rhs = $a.append(rhs);
+            Expr::GreaterThan(lhs, rhs)
+        }
+    };
+    ($a:ident, ($($lhs:tt)*) >= ($($rhs:tt)*)) => {
+        {
+            let lhs = expr!($a, $($lhs)*);
+            let lhs = $a.append(lhs);
+            let rhs = expr!($a, $($rhs)*);
+            let rhs = $a.append(rhs);
+            Expr::GreaterThanEqual(lhs, rhs)
+        }
+    };
+    ($a:ident, ($($lhs:tt)*) < ($($rhs:tt)*)) => {
+        {
+            let lhs = expr!($a, $($lhs)*);
+            let lhs = $a.append(lhs);
+            let rhs = expr!($a, $($rhs)*);
+            let rhs = $a.append(rhs);
+            Expr::LessThan(lhs, rhs)
+        }
+    };
+    ($a:ident, ($($lhs:tt)*) <= ($($rhs:tt)*)) => {
+        {
+            let lhs = expr!($a, $($lhs)*);
+            let lhs = $a.append(lhs);
+            let rhs = expr!($a, $($rhs)*);
+            let rhs = $a.append(rhs);
+            Expr::LessThanEqual(lhs, rhs)
+        }
+    };
+    ($a:ident, ($($lhs:tt)*) & ($($rhs:tt)*)) => {
+        {
+            let lhs = expr!($a, $($lhs)*);
+            let lhs = $a.append(lhs);
+            let rhs = expr!($a, $($rhs)*);
+            let rhs = $a.append(rhs);
+            Expr::And(lhs, rhs)
+        }
+    };
+    ($a:ident, ($($lhs:tt)*) | ($($rhs:tt)*)) => {
+        {
+            let lhs = expr!($a, $($lhs)*);
+            let lhs = $a.append(lhs);
+            let rhs = expr!($a, $($rhs)*);
+            let rhs = $a.append(rhs);
+            Expr::Or(lhs, rhs)
+        }
+    };
+    ($a:ident, !$($lhs:tt)*) => {
+        {
+            let lhs = expr!($a, $($lhs)*);
+            let lhs = $a.append(lhs);
+            Expr::Not(lhs)
+        }
+    };
+}
+
+#[cfg(test)]
+mod test {
+    use crate::ir::*;
+    #[test]
+    pub fn test() {
+        let reg = Register(0);
+        let mut arena: Arena<Expr<u32>> = Arena::new();
+
+        let expr: Expr<u32> = expr!(arena,
+            (load reg w) == (imm 1u8)
+        );
+        println!("{:?}", expr)
+    }
+}
+
+
+pub(crate) use expr;

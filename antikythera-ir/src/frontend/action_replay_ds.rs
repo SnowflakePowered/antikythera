@@ -1,7 +1,5 @@
 use crate::arena::{Arena, Handle};
-use crate::ir::{
-    Block, BoolExpr, Immediate, Location, Op, Operand, Program, ProgramBuilder, Register, Width,
-};
+use crate::ir::{Block, Expr, expr, Immediate, Location, Op, Operand, Program, ProgramBuilder, Register, Width};
 
 fn emit_assign_word(offset_reg: Register, address: u32, value: u32) -> Op<u32> {
     let dest = Location::Offset(offset_reg, address);
@@ -32,7 +30,7 @@ fn emit_if_gt_3(
     address: u32,
     cmp: u32,
     target: Handle<Block<u32>>,
-    exprs: &mut Arena<BoolExpr<u32>>,
+    exprs: &mut Arena<Expr<u32>>,
 ) -> Op<u32> {
     let loc = if address == 0 {
         Location::Register(offset_reg)
@@ -40,11 +38,11 @@ fn emit_if_gt_3(
         Location::Address(address)
     };
 
-    let lhs = exprs.append(BoolExpr::Literal(Operand::Immediate(Immediate::Four(cmp))));
+    let expr = expr!(exprs,
+        (imm cmp) > (load w loc)
+    );
 
-    let rhs = exprs.append(BoolExpr::Literal(Operand::Load(loc, Width::Word)));
-
-    let expr = exprs.append(BoolExpr::GreaterThan(lhs, rhs));
+    let expr = exprs.append(expr);
 
     Op::Branch {
         cond: Some(expr),
@@ -58,7 +56,7 @@ fn emit_if_gt_mask_7(
     mask: u16,
     cmp: u16,
     target: Handle<Block<u32>>,
-    exprs: &mut Arena<BoolExpr<u32>>,
+    exprs: &mut Arena<Expr<u32>>,
 ) -> Op<u32> {
     let loc = if address == 0 {
         Location::Register(offset_reg)
@@ -66,17 +64,11 @@ fn emit_if_gt_mask_7(
         Location::Address(address)
     };
 
-    let lhs = exprs.append(BoolExpr::Literal(Operand::Immediate(Immediate::Two(cmp))));
+    let expr = expr!(exprs,
+        (imm cmp) > (!(imm mask) & (load h loc))
+    );
 
-    let rhs_not = exprs.append(BoolExpr::Not(
-        exprs.append(BoolExpr::Literal(Operand::Immediate(Immediate::Two(mask)))),
-    ));
-
-    let rhs_cmp = exprs.append(BoolExpr::Literal(Operand::Load(loc, Width::Half)));
-
-    let rhs = exprs.append(BoolExpr::And(rhs_not, rhs_cmp));
-
-    let expr = exprs.append(BoolExpr::GreaterThan(lhs, rhs));
+    let expr = exprs.append(expr);
 
     Op::Branch {
         cond: Some(expr),
