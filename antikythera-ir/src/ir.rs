@@ -1,6 +1,7 @@
+use std::fmt::Debug;
 use crate::arena::{Arena, Handle};
 
-pub trait AddressSize: bincode::Encode + bincode::Decode + 'static {}
+pub trait AddressSize: Debug + bincode::Encode + bincode::Decode + 'static {}
 
 impl AddressSize for u8 {}
 impl AddressSize for u16 {}
@@ -57,9 +58,14 @@ pub enum Width {
     Byte,
 }
 
+/// A location in working memory.
+///
+/// If a register is provided, the location is loaded from
+/// the given register interpreted as an unsigned integer
+/// of address-sized width.
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Location<A: AddressSize> {
-    /// Load the location from the given register.
+    /// Load the address from the given register.
     Register(Register),
     /// Use the statically known address.
     Address(A),
@@ -70,6 +76,7 @@ pub enum Location<A: AddressSize> {
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Operand<A: AddressSize> {
     Load(Location<A>, Width),
+    Register(Register),
     Immediate(Immediate),
 }
 
@@ -113,9 +120,14 @@ pub enum Op<A: AddressSize> {
         value: A,
         register: Register,
     },
-    /// Do math on the register
+    /// Load lhs and rhs, do the arithmetic operation according to the overflow mode,
+    /// and write the output to the provided output register.
+    ///
+    /// If loads are less than register length, they will be zero-padded and the result will be
+    /// on the zero-padded register length integer.
     Math {
-        input: Operand<A>,
+        lhs: Operand<A>,
+        rhs: Operand<A>,
         output: Register,
         op: MathOp,
         overflow: Overflow,
@@ -124,7 +136,7 @@ pub enum Op<A: AddressSize> {
     },
     /// Load the value at the guest address into the register.
     LoadMemory {
-        source: A,
+        source: Location<A>,
         register: Register,
     },
     /// Write the value stored in the register into the location `dest`
@@ -156,22 +168,32 @@ pub enum Op<A: AddressSize> {
         dest: Location<A>,
         length: u64,
     },
-    /// Beginning at `dest`, fill the memory with the provided immediate value `length` times, skipping
-    /// offset
+    /// Beginning at `dest`, fill the memory with the provided immediate value `length` times
     MemoryFill {
         value: Immediate,
         dest: Location<A>,
         length: u64,
-        offset: A,
     },
 
-    // Branch to the block if the expression evaluates to true.
+    /// Branch to the block if the condition evaluates to true.
+    /// If there is no condition, then the branch is unconditional.
     Branch {
         cond: Option<Handle<Expr<A>>>,
         target: Handle<Block<A>>,
     },
 
+    /// Immediately stop execution of the program.
     Return,
+
+    /// Immediately stop execution of the current block, and
+    /// resume execution from the beginning of the current block.
+    Loop,
+
+    /// Immediately stop execution of the program and notify the caller.
+    /// This is generally used for operations not supported by the antikythera virtual machine.
+    ///
+    /// An optional argument is provided to indicate the invalid guest opcode compiled.
+    Exception(Option<A>),
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
@@ -248,6 +270,12 @@ macro_rules! expr {
     (imm $op:expr) => {
         Expr::Literal(Operand::Immediate(Immediate::from($op)))
     };
+    ($a:ident, reg $op:expr) => {
+        expr!(reg $op)
+    };
+    (reg $op:expr) => {
+        Expr::Literal(Operand::Register($op))
+    };
     (load w $reg:expr) => {
         Expr::Literal(Operand::Load($reg, Width::Word))
     };
@@ -279,6 +307,17 @@ macro_rules! expr {
             let rhs = expr!($a, $($rhs)*);
             let rhs = $a.append(rhs);
             Expr::Equal(lhs, rhs)
+        }
+    };
+    ($a:ident, ($($lhs:tt)*) != ($($rhs:tt)*)) => {
+        {
+            let lhs = expr!($a, $($lhs)*);
+            let lhs = $a.append(lhs);
+            let rhs = expr!($a, $($rhs)*);
+            let rhs = $a.append(rhs);
+            let eq = Expr::Equal(lhs, rhs);
+            let eq = $a.append(eq);
+            Expr::Not(eq)
         }
     };
     ($a:ident, ($($lhs:tt)*) > ($($rhs:tt)*)) => {
@@ -346,16 +385,30 @@ macro_rules! expr {
 
 #[cfg(test)]
 mod test {
+    pub fn debug<A: AddressSize>(arena: &Arena<Expr<A>>, expr: &Expr<A>) -> String {
+        match expr {
+            &Expr::Equal(l, r) => format!("({} == {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
+            &Expr::GreaterThan(l, r) => format!("({} > {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
+            &Expr::GreaterThanEqual(l, r) => format!("({} >= {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
+            &Expr::LessThan(l, r) => format!("({} < {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
+            &Expr::LessThanEqual(l, r) => format!("({} <= {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
+            &Expr::And(l, r) => format!("({} & {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
+            &Expr::Or(l, r) => format!("({} | {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
+            &Expr::Not(l) => format!("!({})", debug(arena, arena.try_get(l).unwrap())),
+            Expr::Literal(l) => format!("{:?}", l)
+        }
+    }
+
     use crate::ir::*;
     #[test]
     pub fn test() {
-        let reg = Register(0);
+        let reg = Location::Register(Register(0));
         let mut arena: Arena<Expr<u32>> = Arena::new();
 
         let expr: Expr<u32> = expr!(arena,
-            (load reg w) == (imm 1u8)
+            (load w reg) != (imm 1u8)
         );
-        println!("{:?}", expr)
+        println!("{:?}", debug(&arena, &expr))
     }
 }
 
