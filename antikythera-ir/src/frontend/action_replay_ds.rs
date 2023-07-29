@@ -229,14 +229,17 @@ fn emit_if_neq_mask_a(
     }
 }
 
-fn emit_assign_offset_b(
+fn emit_assign_register_offset(
     offset_reg: Register,
+    store_reg: Register,
     address: u32,
+    width: Width
 ) -> Op<u32> {
     let loc = Location::Offset(offset_reg, address);
     Op::LoadMemory {
         source: loc,
-        register: offset_reg,
+        register: store_reg,
+        width
     }
 }
 
@@ -259,14 +262,106 @@ fn emit_add_reg_imm_d4(
         rhs: Operand::Immediate(Immediate::Four(immediate)),
         output: register,
         op: MathOp::Add,
-        overflow: Overflow::Saturating,
+        overflow: Overflow::Wrapping,
         load_type: NumType::Integer,
         store_type: NumType::Integer,
     }
 }
 
+fn emit_assign_word_offset_incr_d6(
+    datareg: Register,
+    offset: Register,
+    address: u32
+) -> [Op<u32>; 2] {
+    let assign = Op::Store {
+        dest: Location::Offset(offset, address),
+        register: datareg,
+        width: Width::Word,
+    };
 
+    let increment = Op::Math {
+        lhs: Operand::Register(offset),
+        rhs: Operand::Immediate(Immediate::Four(4)),
+        output: offset,
+        op: MathOp::Add,
+        overflow: Overflow::Wrapping,
+        load_type: NumType::Integer,
+        store_type: NumType::Integer,
+    };
 
+    [assign, increment]
+}
+
+fn emit_assign_half_offset_incr_d7(
+    datareg: Register,
+    offset: Register,
+    address: u32
+) -> [Op<u32>; 2] {
+    let assign = Op::Store {
+        dest: Location::Offset(offset, address),
+        register: datareg,
+        width: Width::Half,
+    };
+
+    let increment = Op::Math {
+        lhs: Operand::Register(offset),
+        rhs: Operand::Immediate(Immediate::Four(2)),
+        output: offset,
+        op: MathOp::Add,
+        overflow: Overflow::Wrapping,
+        load_type: NumType::Integer,
+        store_type: NumType::Integer,
+    };
+
+    [assign, increment]
+}
+
+fn emit_assign_byte_offset_incr_d7(
+    datareg: Register,
+    offset: Register,
+    address: u32
+) -> [Op<u32>; 2] {
+    let assign = Op::Store {
+        dest: Location::Offset(offset, address),
+        register: datareg,
+        width: Width::Byte,
+    };
+
+    let increment = Op::Math {
+        lhs: Operand::Register(offset),
+        rhs: Operand::Immediate(Immediate::Four(1)),
+        output: offset,
+        op: MathOp::Add,
+        overflow: Overflow::Wrapping,
+        load_type: NumType::Integer,
+        store_type: NumType::Integer,
+    };
+
+    [assign, increment]
+}
+
+fn emit_copy_e(
+    offset_reg: Register,
+    offset: u32,
+    bytes: Vec<u8>
+) -> Op<u32> {
+    Op::WriteBuffer {
+        value: bytes,
+        dest: Location::Offset(offset_reg, offset),
+    }
+}
+
+fn emit_copy_f(
+    offset_reg: Register,
+    offset: u32,
+    length: u32
+) -> Op<u32> {
+    Op::MemoryCopy {
+        source: Location::Register(offset_reg),
+        dest: Location::Address(offset),
+        length: length as u64,
+    }
+}
 /// c4 code not supported.
 fn emit_c4() -> Op<u32> {
     Op::Exception(Some(0xC4000000))

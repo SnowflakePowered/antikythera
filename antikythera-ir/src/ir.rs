@@ -73,10 +73,14 @@ pub enum Location<A: AddressSize> {
     Offset(Register, A),
 }
 
+/// An expression operand
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Operand<A: AddressSize> {
+    /// Load the value at the location with the given width.
     Load(Location<A>, Width),
+    /// Use the raw value of the register.
     Register(Register),
+    /// Use the immediate value.
     Immediate(Immediate),
 }
 
@@ -85,8 +89,8 @@ pub struct Register(u8);
 
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Overflow {
-    Saturating,
     Wrapping,
+    Saturating,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
@@ -138,11 +142,13 @@ pub enum Op<A: AddressSize> {
     LoadMemory {
         source: Location<A>,
         register: Register,
+        width: Width,
     },
     /// Write the value stored in the register into the location `dest`
     Store {
         dest: Location<A>,
         register: Register,
+        width: Width,
     },
 
     // Memory operations
