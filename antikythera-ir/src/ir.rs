@@ -11,34 +11,34 @@ impl AddressSize for u64 {}
 /// An untyped immediate value.
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Immediate {
-    One(u8),
-    Two(u16),
-    Four(u32),
-    Eight(u64),
+    Imm8(u8),
+    Imm16(u16),
+    Imm32(u32),
+    Imm64(u64),
 }
 
 impl From<u8> for Immediate {
     fn from(value: u8) -> Self {
-        Immediate::One(value)
+        Immediate::Imm8(value)
     }
 }
 
 impl From<u16> for Immediate {
     fn from(value: u16) -> Self {
-        Immediate::Two(value)
+        Immediate::Imm16(value)
     }
 }
 
 impl From<u32> for Immediate {
     fn from(value: u32) -> Self {
-        Immediate::Four(value)
+        Immediate::Imm32(value)
     }
 }
 
 
 impl From<u64> for Immediate {
     fn from(value: u64) -> Self {
-        Immediate::Eight(value)
+        Immediate::Imm64(value)
     }
 }
 
@@ -85,7 +85,7 @@ pub enum Operand<A: AddressSize> {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode, Clone, Copy)]
-pub struct Register(u8);
+pub struct Register(pub u8);
 
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Overflow {
@@ -228,33 +228,6 @@ impl<A: AddressSize> ProgramBuilder<A> {
         Self { blocks, exprs }
     }
 }
-
-// macro_rules! imm {
-//     ($val:ident u8) => {
-//         Immediate::One($val)
-//     };
-//     ($val:literal u8) => {
-//         Immediate::One($val)
-//     };
-//     ($val:ident u16) => {
-//         Immediate::Two($val)
-//     };
-//     ($val:literal u16) => {
-//         Immediate::Two($val)
-//     };
-//     ($val:ident u32) => {
-//         Immediate::Four($val)
-//     };
-//     ($val:literal u32) => {
-//         Immediate::Four($val)
-//     };
-//     ($val:ident u64) => {
-//         Immediate::Eight($val)
-//     };
-//     ($val:literal u64) => {
-//         Immediate::Eight($val)
-//     };
-// }
 
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Expr<A: AddressSize> {
