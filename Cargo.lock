@@ -11,6 +11,7 @@ name = "antikythera-ir"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "byteorder",
  "indexmap",
  "nom",
  "num-traits",
@@ -45,6 +46,12 @@ checksum = "7e30759b3b99a1b802a7a3aa21c85c3ded5c28e1c83170d82d70f08bbf7f3e4c"
 dependencies = [
  "virtue",
 ]
+
+[[package]]
+name = "byteorder"
+version = "1.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
 name = "equivalent"

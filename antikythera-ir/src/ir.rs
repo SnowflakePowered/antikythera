@@ -1,5 +1,5 @@
-use std::fmt::Debug;
 use crate::arena::{Arena, Handle};
+use std::fmt::{Debug, Display, Formatter, Write};
 
 pub trait AddressSize: Debug + bincode::Encode + bincode::Decode + 'static {}
 
@@ -15,6 +15,18 @@ pub enum Immediate {
     Imm16(u16),
     Imm32(u32),
     Imm64(u64),
+}
+
+impl Display for Immediate {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("imm ")?;
+        match self {
+            Immediate::Imm8(v) => f.write_fmt(format_args!("8 0x{v:x}")),
+            Immediate::Imm16(v) => f.write_fmt(format_args!("16 0x{v:x}")),
+            Immediate::Imm32(v) => f.write_fmt(format_args!("32 0x{v:x}")),
+            Immediate::Imm64(v) => f.write_fmt(format_args!("64 0x{v:x}")),
+        }
+    }
 }
 
 impl From<u8> for Immediate {
@@ -35,13 +47,11 @@ impl From<u32> for Immediate {
     }
 }
 
-
 impl From<u64> for Immediate {
     fn from(value: u64) -> Self {
         Immediate::Imm64(value)
     }
 }
-
 
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Width {
@@ -73,6 +83,16 @@ pub enum Location<A: AddressSize> {
     Offset(Register, A),
 }
 
+impl<A: AddressSize> Display for Location<A> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Location::Register(r) => f.write_fmt(format_args!("%{}", r.0)),
+            Location::Address(a) => f.write_fmt(format_args!("@{a:x?}")),
+            Location::Offset(r, a) => f.write_fmt(format_args!("@{a:x?}[%{0}]", r.0)),
+        }
+    }
+}
+
 /// An expression operand
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Operand<A: AddressSize> {
@@ -84,9 +104,35 @@ pub enum Operand<A: AddressSize> {
     Immediate(Immediate),
 }
 
+impl Display for Width {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let w = match self {
+            Width::Byte => "b",
+            Width::Quarter => "q",
+            Width::Half => "h",
+            Width::Word => "w",
+        };
+        f.write_str(w)
+    }
+}
+
+impl<A: AddressSize> Display for Operand<A> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Operand::Load(l, w) => f.write_fmt(format_args!("l {w} {l}")),
+            Operand::Register(r) => f.write_fmt(format_args!("reg {r}")),
+            Operand::Immediate(i) => f.write_fmt(format_args!("{i}")),
+        }
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode, Clone, Copy)]
 pub struct Register(pub u8);
-
+impl Display for Register {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("%{}", self.0))
+    }
+}
 #[derive(Debug, Eq, PartialEq, Hash, bincode::Encode, bincode::Decode)]
 pub enum Overflow {
     Wrapping,
@@ -120,10 +166,7 @@ pub enum Op<A: AddressSize> {
 
     // Register operations
     /// Load the given immediate value into the given register.
-    LoadImmediate {
-        value: A,
-        register: Register,
-    },
+    LoadImmediate { value: A, register: Register },
     /// Load lhs and rhs, do the arithmetic operation according to the overflow mode,
     /// and write the output to the provided output register.
     ///
@@ -156,15 +199,9 @@ pub enum Op<A: AddressSize> {
     ///
     /// Cheat operations involving 8, 16, 32, and 64 bit immediate writes
     /// desugar to this operation.
-    WriteImmediate {
-        value: Immediate,
-        dest: Location<A>,
-    },
+    WriteImmediate { value: Immediate, dest: Location<A> },
     /// Write the provided vector of bytes into the destination.
-    WriteBuffer {
-        value: Vec<u8>,
-        dest: Location<A>,
-    },
+    WriteBuffer { value: Vec<u8>, dest: Location<A> },
 
     /// Copy `length` bytes from the guest location at `source` to the guest location at `dest`.
     ///
@@ -182,7 +219,7 @@ pub enum Op<A: AddressSize> {
     },
 
     /// Branch to the block if the condition evaluates to true.
-    /// If there is no condition, then the branch is unconditional.
+    /// If there is no condition, then the branch is unconditional, and always takes the accept branch.
     Branch {
         cond: Option<Handle<Expr<A>>>,
         target: Handle<Block<A>>,
@@ -208,8 +245,113 @@ impl<A: AddressSize> Block<A> {
     pub fn new(instrs: impl IntoIterator<Item = Op<A>>) -> Self {
         Block(instrs.into_iter().collect())
     }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
 }
 
+impl<A: AddressSize> Display for Block<A> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        // for
+        todo!();
+    }
+}
+
+impl Display for NumType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NumType::Integer => f.write_str("i"),
+            NumType::Floating => f.write_str("f"),
+        }
+    }
+}
+
+impl Display for MathOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let op = match self {
+            MathOp::Add => "add",
+            MathOp::Sub => "sub",
+            MathOp::Mul => "mul",
+            MathOp::Div => "div",
+            MathOp::Shl => "shl",
+            MathOp::Shr => "shr",
+        };
+
+        f.write_str(op)
+    }
+}
+
+impl<A: AddressSize> Display for Op<A> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Op::NoOperation => f.write_str("noop"),
+            Op::LoadImmediate { value, register } => {
+                f.write_fmt(format_args!("{register} = imm 0x{value:x?}"))
+            }
+            Op::Math {
+                rhs,
+                output,
+                op,
+                load_type,
+                overflow,
+                lhs,
+                store_type,
+            } => {
+                let overflow = match overflow {
+                    Overflow::Wrapping => "",
+                    Overflow::Saturating => " sat",
+                };
+
+                f.write_fmt(format_args!(
+                    "{output}{store_type} = {op}{load_type} {lhs} {rhs}{overflow}",
+                ))
+            }
+            Op::LoadMemory {
+                source,
+                register,
+                width,
+            } => f.write_fmt(format_args!("{register} = l {width} @{source}")),
+            Op::Store {
+                dest,
+                register,
+                width,
+            } => f.write_fmt(format_args!("{dest} = reg {width} {register}")),
+            Op::WriteImmediate { value, dest } => f.write_fmt(format_args!("{dest} = {value}")),
+            Op::WriteBuffer { value, dest } => {
+                f.write_fmt(format_args!("memcpy {dest} imm {value:?}"))
+            }
+            Op::MemoryCopy {
+                source,
+                dest,
+                length,
+            } => f.write_fmt(format_args!("memcpy {dest} {source} {length}")),
+            Op::MemoryFill {
+                value,
+                dest,
+                length,
+            } => f.write_fmt(format_args!("memfill {dest} {value} {length}")),
+            Op::Branch { cond, target } => {
+                if let Some(cond) = cond {
+                    f.write_fmt(format_args!("br {target:?} {cond:?}"))
+                } else {
+                    f.write_fmt(format_args!("br {target:?}"))
+                }
+            }
+            Op::Return => f.write_str("ret"),
+            Op::Loop => f.write_str("loop"),
+            Op::Exception(e) => {
+                if let Some(e) = e {
+                    f.write_fmt(format_args!("ex {e:?}"))
+                } else {
+                    f.write_str("ex")
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Program<A: AddressSize> {
     pub entry: Handle<Block<A>>,
     pub blocks: Arena<Block<A>>,
@@ -362,22 +504,86 @@ macro_rules! expr {
     };
 }
 
-#[cfg(test)]
-mod test {
-    pub fn debug<A: AddressSize>(arena: &Arena<Expr<A>>, expr: &Expr<A>) -> String {
-        match expr {
-            &Expr::Equal(l, r) => format!("({} == {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
-            &Expr::GreaterThan(l, r) => format!("({} > {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
-            &Expr::GreaterThanEqual(l, r) => format!("({} >= {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
-            &Expr::LessThan(l, r) => format!("({} < {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
-            &Expr::LessThanEqual(l, r) => format!("({} <= {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
-            &Expr::And(l, r) => format!("({} & {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
-            &Expr::Or(l, r) => format!("({} | {})", debug(arena, arena.try_get(l).unwrap()), debug(arena, arena.try_get(r).unwrap())),
-            &Expr::Not(l) => format!("!({})", debug(arena, arena.try_get(l).unwrap())),
-            Expr::Literal(l) => format!("{:?}", l)
+fn debug_expr<A: AddressSize>(arena: &Arena<Expr<A>>, expr: &Expr<A>) -> String {
+    match expr {
+        &Expr::Equal(l, r) => format!(
+            "({} == {})",
+            debug_expr(arena, arena.try_get(l).unwrap()),
+            debug_expr(arena, arena.try_get(r).unwrap())
+        ),
+        &Expr::GreaterThan(l, r) => format!(
+            "({} > {})",
+            debug_expr(arena, arena.try_get(l).unwrap()),
+            debug_expr(arena, arena.try_get(r).unwrap())
+        ),
+        &Expr::GreaterThanEqual(l, r) => format!(
+            "({} >= {})",
+            debug_expr(arena, arena.try_get(l).unwrap()),
+            debug_expr(arena, arena.try_get(r).unwrap())
+        ),
+        &Expr::LessThan(l, r) => format!(
+            "({} < {})",
+            debug_expr(arena, arena.try_get(l).unwrap()),
+            debug_expr(arena, arena.try_get(r).unwrap())
+        ),
+        &Expr::LessThanEqual(l, r) => format!(
+            "({} <= {})",
+            debug_expr(arena, arena.try_get(l).unwrap()),
+            debug_expr(arena, arena.try_get(r).unwrap())
+        ),
+        &Expr::And(l, r) => format!(
+            "({} & {})",
+            debug_expr(arena, arena.try_get(l).unwrap()),
+            debug_expr(arena, arena.try_get(r).unwrap())
+        ),
+        &Expr::Or(l, r) => format!(
+            "({} | {})",
+            debug_expr(arena, arena.try_get(l).unwrap()),
+            debug_expr(arena, arena.try_get(r).unwrap())
+        ),
+        &Expr::Not(l) => format!("!({})", debug_expr(arena, arena.try_get(l).unwrap())),
+        Expr::Literal(l) => format!("({l})"),
+    }
+}
+
+impl<A: AddressSize> Display for Arena<Expr<A>> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut expr_debug = f.debug_map();
+        for (handle, expr) in self.iter() {
+            expr_debug.key(&handle).value(&debug_expr(&self, expr));
+        }
+
+        expr_debug.finish()
+    }
+}
+
+
+fn print_code<A: AddressSize>(f: &mut Formatter<'_>, blocks: &Arena<Block<A>>, exprs: &Arena<Expr<A>>) -> std::fmt::Result {
+    for (handle, block) in blocks.iter() {
+        f.write_fmt(format_args!("{handle:?}:\n"))?;
+        for op in block.0.iter() {
+            if let Op::Branch { cond: Some(cond), target } = op {
+                let expr = exprs.try_get(*cond).unwrap();
+                f.write_fmt(format_args!("\tbr {target:?} [{}]\n", debug_expr(exprs, expr)))?;
+            } else {
+                f.write_fmt(format_args!("\t{op}\n"))?;
+            }
         }
     }
 
+    Ok(())
+
+}
+
+impl<A: AddressSize> Display for Program<A> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("entry: {:?}\n", self.entry))?;
+        print_code(f, &self.blocks, &self.exprs)
+    }
+}
+
+#[cfg(test)]
+mod test {
     use crate::ir::*;
     #[test]
     pub fn test() {
@@ -387,9 +593,8 @@ mod test {
         let expr: Expr<u32> = expr!(arena,
             (load w reg) != (imm 1u8)
         );
-        println!("{:?}", debug(&arena, &expr))
+        println!("{:?}", debug_expr(&arena, &expr))
     }
 }
-
 
 pub(crate) use expr;

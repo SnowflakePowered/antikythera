@@ -1,6 +1,6 @@
 use crate::arena::Arena;
 use crate::frontend::Compiler;
-use crate::ir::{Block, Expr, expr, Immediate, Location, Op, Operand, Program, Width};
+use crate::ir::{expr, Block, Expr, Immediate, Location, Op, Operand, Program, Width};
 
 fn compile_nes_cheat(address: u16, key: u8, value: u8) -> Program<u16> {
     let mut exprs = Arena::new();
@@ -15,7 +15,7 @@ fn compile_nes_cheat(address: u16, key: u8, value: u8) -> Program<u16> {
 
     let assign = blocks.append(assign);
 
-    let cmp = expr!{exprs,
+    let cmp = expr! {exprs,
       (imm value) == (load w Location::Address(address))
     };
 
