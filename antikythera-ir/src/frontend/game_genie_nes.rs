@@ -16,7 +16,7 @@ fn compile_nes_cheat(address: u16, key: u8, value: u8) -> Program<u16> {
     let assign = blocks.append(assign);
 
     let cmp = expr! {exprs,
-      (imm value) == (load w Location::Address(address))
+      (imm key) == (load w Location::Address(address))
     };
 
     let expression = exprs.append(cmp);
@@ -43,5 +43,18 @@ impl Compiler<u16> for GameGenieNes {
     fn compile(cheat: String) -> Program<u16> {
         // todo: parse te code
         compile_nes_cheat(0, 0, 0)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::frontend::game_genie_nes::GameGenieNes;
+    use crate::frontend::Compiler;
+
+    #[test]
+    pub fn parse() {
+        let program = GameGenieNes::compile(String::from(""));
+
+        println!("{}", program);
     }
 }

@@ -1,9 +1,9 @@
 use crate::frontend::Compiler;
 use crate::ir::Program;
 
+mod compile;
 mod emit;
 mod parse;
-mod compile;
 
 /// Compiler for Datel Action Replay for Nintendo DS.
 ///

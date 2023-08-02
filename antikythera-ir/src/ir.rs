@@ -19,7 +19,7 @@ pub enum Immediate {
 
 impl Display for Immediate {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str("imm ")?;
+        f.write_str("im ")?;
         match self {
             Immediate::Imm8(v) => f.write_fmt(format_args!("8 0x{v:x}")),
             Immediate::Imm16(v) => f.write_fmt(format_args!("16 0x{v:x}")),
@@ -119,8 +119,8 @@ impl Display for Width {
 impl<A: AddressSize> Display for Operand<A> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Operand::Load(l, w) => f.write_fmt(format_args!("l {w} {l}")),
-            Operand::Register(r) => f.write_fmt(format_args!("reg {r}")),
+            Operand::Load(l, w) => f.write_fmt(format_args!("ld {w} {l}")),
+            Operand::Register(r) => f.write_fmt(format_args!("rx {r}")),
             Operand::Immediate(i) => f.write_fmt(format_args!("{i}")),
         }
     }
@@ -557,14 +557,24 @@ impl<A: AddressSize> Display for Arena<Expr<A>> {
     }
 }
 
-
-fn print_code<A: AddressSize>(f: &mut Formatter<'_>, blocks: &Arena<Block<A>>, exprs: &Arena<Expr<A>>) -> std::fmt::Result {
+fn print_code<A: AddressSize>(
+    f: &mut Formatter<'_>,
+    blocks: &Arena<Block<A>>,
+    exprs: &Arena<Expr<A>>,
+) -> std::fmt::Result {
     for (handle, block) in blocks.iter() {
         f.write_fmt(format_args!("{handle:?}:\n"))?;
         for op in block.0.iter() {
-            if let Op::Branch { cond: Some(cond), target } = op {
+            if let Op::Branch {
+                cond: Some(cond),
+                target,
+            } = op
+            {
                 let expr = exprs.try_get(*cond).unwrap();
-                f.write_fmt(format_args!("\tbr {target:?} [{}]\n", debug_expr(exprs, expr)))?;
+                f.write_fmt(format_args!(
+                    "\tbr {target:?} [{}]\n",
+                    debug_expr(exprs, expr)
+                ))?;
             } else {
                 f.write_fmt(format_args!("\t{op}\n"))?;
             }
@@ -572,7 +582,6 @@ fn print_code<A: AddressSize>(f: &mut Formatter<'_>, blocks: &Arena<Block<A>>, e
     }
 
     Ok(())
-
 }
 
 impl<A: AddressSize> Display for Program<A> {
