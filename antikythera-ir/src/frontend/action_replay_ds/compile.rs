@@ -1,6 +1,6 @@
 use crate::arena::{Arena, Handle};
 use crate::frontend::action_replay_ds::emit;
-use crate::frontend::action_replay_ds::emit::{emit_if_eq_5, emit_if_eq_mask_9};
+use crate::frontend::action_replay_ds::emit::{emit_if_eq_5, emit_if_eq_mask_9, emit_if_gt_4, emit_if_gt_mask_8, emit_if_lt_3, emit_if_lt_mask_7, emit_if_neq_6, emit_if_neq_mask_a};
 use crate::frontend::action_replay_ds::parse::CodeType;
 use crate::ir::{Block, Expr, Op, Program, Register};
 use std::slice::Iter;
@@ -78,6 +78,46 @@ fn munch_conditional_body<'a>(instrs: &[CodeType]) -> &[CodeType] {
     instrs.split_at(index).0
 }
 
+fn handle_conditional(
+    instrs: &mut Iter<CodeType>,
+    current_block: &mut Vec<Op<u32>>,
+    offset_reg: Register,
+    blocks: &mut Arena<Block<u32>>,
+    exprs: &mut Arena<Expr<u32>>,
+    terminal: Option<Handle<Block<u32>>>,
+    emit: impl FnOnce(Handle<Block<u32>>, &mut Arena<Expr<u32>>) -> Op<u32>,
+) {
+    let map = instrs.as_slice();
+    let body = munch_conditional_body(map);
+
+    for _ in 0..body.len() {
+        let _ = instrs.next();
+    }
+    eprintln!("body\n:{:#x?}\n===", body);
+
+    let continuation = compile_next_block(instrs, blocks, exprs, offset_reg, terminal);
+
+    let continuation = if continuation.len() != 0 {
+        Some(blocks.append(continuation))
+    } else {
+        terminal
+    };
+
+    let body = compile_next_block(&mut body.iter(), blocks, exprs, offset_reg, continuation);
+
+    let body = blocks.append(body);
+
+    current_block.push(emit(body, exprs));
+    if let Some(continuation) = continuation {
+        current_block.push(Op::Branch {
+            cond: None,
+            target: continuation,
+        });
+    } else {
+        current_block.push(Op::Return)
+    }
+}
+
 pub fn compile_next_block<'a>(
     mut instrs: &mut Iter<CodeType>,
     blocks: &mut Arena<Block<u32>>,
@@ -98,166 +138,109 @@ pub fn compile_next_block<'a>(
                 current_block.push(emit::emit_assign_byte_2(offset_reg, location, value))
             }
             &CodeType::LessThan32 { location, cmp } => {
-                // let target = parse_next_block(instrs, blocks, exprs, offset_reg);
-                // current_block.push(emit::emit_if_lt_3(offset_reg, location, cmp, target, exprs));
-                // let next = parse_next_block(instrs, blocks, exprs, offset_reg);
-                // current_block.push(Op::Branch {
-                //     cond: None,
-                //     target: next,
-                // })
-
+                handle_conditional(
+                    instrs,
+                    &mut current_block,
+                    offset_reg,
+                    blocks,
+                    exprs,
+                    terminal,
+                    |body, exprs| emit_if_lt_3(offset_reg, location, cmp, body, exprs),
+                );
             }
             &CodeType::GreaterThan32 { location, cmp } => {
-                // let target = parse_next_block(instrs, blocks, exprs, offset_reg);
-                // current_block.push(emit::emit_if_gt_4(offset_reg, location, cmp, target, exprs));
-                // let next = parse_next_block(instrs, blocks, exprs, offset_reg);
-                // current_block.push(Op::Branch {
-                //     cond: None,
-                //     target: next,
-                // })
+                handle_conditional(
+                    instrs,
+                    &mut current_block,
+                    offset_reg,
+                    blocks,
+                    exprs,
+                    terminal,
+                    |body, exprs| emit_if_gt_4(offset_reg, location, cmp, body, exprs),
+                );
             }
             &CodeType::Equal32 { location, cmp } => {
-                let map = instrs.as_slice();
-                let body = munch_conditional_body(map);
-                eprintln!("body\n:{:#x?}\n===", body);
-
-                for _ in 0..body.len() {
-                    let _ = instrs.next();
-                }
-                eprintln!("body\n:{:#x?}\n===", body);
-
-
-                let continuation =
-                    compile_next_block(&mut instrs, blocks, exprs, offset_reg, terminal);
-
-                let continuation = if continuation.len() != 0 {
-                    Some(blocks.append(continuation))
-                } else {
-                    terminal
-                };
-
-                let body = compile_next_block(
-                    &mut body.iter(),
+                handle_conditional(
+                    instrs,
+                    &mut current_block,
+                    offset_reg,
                     blocks,
                     exprs,
-                    offset_reg,
-                    continuation,
+                    terminal,
+                    |body, exprs| emit_if_eq_5(offset_reg, location, cmp, body, exprs),
                 );
-
-                let body = blocks.append(body);
-
-                current_block.push(emit_if_eq_5(offset_reg, location, cmp, body, exprs));
-                if let Some(continuation) = continuation {
-                    current_block.push(Op::Branch {
-                        cond: None,
-                        target: continuation,
-                    });
-                } else {
-                    current_block.push(Op::Return)
-                }
             }
-            &CodeType::Equal16 {
-                location,
-                cmp,
-                mask,
-            } => {
-                let map = instrs.as_slice();
-                let body = munch_conditional_body(map);
-                eprintln!("body\n:{:#x?}\n===", body);
 
-                for _ in 0..body.len() {
-                    let _ = instrs.next();
-                }
-
-                let continuation =
-                    compile_next_block(&mut instrs, blocks, exprs, offset_reg, terminal);
-
-                let continuation = if continuation.len() != 0 {
-                    Some(blocks.append(continuation))
-                } else {
-                    terminal
-                };
-
-                let body = compile_next_block(
-                    &mut body.iter(),
-                    blocks,
-                    exprs,
-                    offset_reg,
-                    continuation,
-                );
-
-                let body = blocks.append(body);
-
-                current_block.push(emit_if_eq_mask_9(
-                    offset_reg, location, mask, cmp, body, exprs,
-                ));
-
-                if let Some(continuation) = continuation {
-                    current_block.push(Op::Branch {
-                        cond: None,
-                        target: continuation,
-                    });
-                } else {
-                    current_block.push(Op::Return)
-                }
-
-            }
             &CodeType::NotEqual32 { location, cmp } => {
-                // let target = parse_next_block(instrs, blocks, exprs, offset_reg);
-                // current_block.push(emit::emit_if_neq_6(
-                //     offset_reg, location, cmp, target, exprs,
-                // ));
-                // let next = parse_next_block(instrs, blocks, exprs, offset_reg);
-                // current_block.push(Op::Branch {
-                //     cond: None,
-                //     target: next,
-                // })
+                handle_conditional(
+                    instrs,
+                    &mut current_block,
+                    offset_reg,
+                    blocks,
+                    exprs,
+                    terminal,
+                    |body, exprs| emit_if_neq_6(offset_reg, location, cmp, body, exprs),
+                );
             }
             &CodeType::LessThan16 {
                 location,
                 cmp,
                 mask,
             } => {
-                // let target = parse_next_block(instrs, blocks, exprs, offset_reg);
-                // current_block.push(emit::emit_if_lt_mask_7(
-                //     offset_reg, location, mask, cmp, target, exprs,
-                // ));
-                // let next = parse_next_block(instrs, blocks, exprs, offset_reg);
-                // current_block.push(Op::Branch {
-                //     cond: None,
-                //     target: next,
-                // })
+                handle_conditional(
+                    instrs,
+                    &mut current_block,
+                    offset_reg,
+                    blocks,
+                    exprs,
+                    terminal,
+                    |body, exprs| emit_if_lt_mask_7(offset_reg, location, mask, cmp, body, exprs),
+                );
             }
             &CodeType::GreaterThan16 {
                 location,
                 cmp,
                 mask,
             } => {
-                // let target = parse_next_block(instrs, blocks, exprs, offset_reg);
-                // current_block.push(emit::emit_if_gt_mask_8(
-                //     offset_reg, location, mask, cmp, target, exprs,
-                // ));
-                // let next = parse_next_block(instrs, blocks, exprs, offset_reg);
-                // current_block.push(Op::Branch {
-                //     cond: None,
-                //     target: next,
-                // })
+                handle_conditional(
+                    instrs,
+                    &mut current_block,
+                    offset_reg,
+                    blocks,
+                    exprs,
+                    terminal,
+                    |body, exprs| emit_if_gt_mask_8(offset_reg, location, mask, cmp, body, exprs),
+                );
             }
-
+            &CodeType::Equal16 {
+                location,
+                cmp,
+                mask,
+            } => {
+                handle_conditional(
+                    instrs,
+                    &mut current_block,
+                    offset_reg,
+                    blocks,
+                    exprs,
+                    terminal,
+                    |body, exprs| emit_if_eq_mask_9(offset_reg, location, mask, cmp, body, exprs),
+                );
+            }
             &CodeType::NotEqual16 {
                 location,
                 cmp,
                 mask,
             } => {
-                // let target = parse_next_block(instrs, blocks, exprs, offset_reg);
-                // current_block.push(emit::emit_if_neq_mask_a(
-                //     offset_reg, location, mask, cmp, target, exprs,
-                // ));
-                // let next = parse_next_block(instrs, blocks, exprs, offset_reg);
-                // current_block.push(Op::Branch {
-                //     cond: None,
-                //     target: next,
-                // })
+                handle_conditional(
+                    instrs,
+                    &mut current_block,
+                    offset_reg,
+                    blocks,
+                    exprs,
+                    terminal,
+                    |body, exprs| emit_if_neq_mask_a(offset_reg, location, mask, cmp, body, exprs),
+                );
             }
             &CodeType::LoadOffset { .. } => {}
             &CodeType::Repeat { .. } => {}
@@ -311,6 +294,17 @@ D2000000 00000000
 5200764C 1E52C303
 1200764C 00003308
 D2000000 00000000"##;
+
+    const CONTINUATION_AFTER_NESTED_IF: &str = r##"94000130 FCFF0300
+5200764C 1E523308
+D0000000 00000000
+1200764C 0000C303
+D0000000 00000000
+94000130 FCFF0100
+5200764C 1E52C303
+1200764C 00003308
+D2000000 00000000"##;
+
     #[test]
     pub fn parse() {
         let (_, list) = parse::parse(LIST).unwrap();
@@ -328,6 +322,16 @@ D2000000 00000000"##;
     #[test]
     pub fn parse_d2() {
         let (_, list) = parse::parse(CONTINUATION_AFTER_D2).unwrap();
+        println!("{:#x?}", list);
+
+        let program = super::parse(list);
+
+        println!("{}", program);
+    }
+
+    #[test]
+    pub fn parse_nested() {
+        let (_, list) = parse::parse(CONTINUATION_AFTER_NESTED_IF).unwrap();
         println!("{:#x?}", list);
 
         let program = super::parse(list);
