@@ -16,7 +16,7 @@ fn compile_nes_cheat(address: u16, key: u8, value: u8) -> Program<u16> {
     let assign = blocks.append(assign);
 
     let cmp = expr! {exprs,
-      (imm key) == (load w Location::Address(address))
+      (im key) == (ld w Location::Address(address))
     };
 
     let expression = exprs.append(cmp);

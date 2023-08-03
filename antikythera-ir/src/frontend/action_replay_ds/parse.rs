@@ -2,7 +2,7 @@ use crate::frontend::Compiler;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, tag_no_case, take, take_while_m_n};
 use nom::character::complete::newline;
-use nom::combinator::map_res;
+use nom::combinator::{eof, map_res};
 use nom::multi::separated_list1;
 use nom::{IResult, Parser};
 use num_traits::{Num, Unsigned};
@@ -32,7 +32,7 @@ fn take_imm<N: Num<FromStrRadixErr = ParseIntError> + Unsigned>(
 /// Action Replay DS Code Types.
 ///
 /// A stream of code-types can be lexed to create an AST.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CodeType {
     /// 0XXXXXXX YYYYYYYY
     Write32 {
@@ -102,6 +102,8 @@ pub enum CodeType {
     },
     EndIf,
     EndRepeat,
+    /// D2XXXXXX ZZZZYYYY.
+    ///
     EndCode,
     LoadOffsetImmediate {
         immediate: u32,
@@ -129,6 +131,9 @@ pub enum CodeType {
     },
     LoadData8 {
         address: u32,
+    },
+    IncrementOffset {
+        operand: u32,
     },
     MemWrite {
         address: u32,
@@ -264,6 +269,7 @@ parse_lo_code!("d8", parse_code_d8, CodeType::StoreIncr8 { address });
 parse_lo_code!("d9", parse_code_d9, CodeType::LoadData32 { address });
 parse_lo_code!("da", parse_code_da, CodeType::LoadData16 { address });
 parse_lo_code!("db", parse_code_db, CodeType::LoadData8 { address });
+parse_lo_code!("dc", parse_code_dc, CodeType::IncrementOffset { operand });
 
 fn parse_code_f(input: &str) -> IResult<&str, CodeType> {
     let (input, _) = tag_no_case("f")(input)?;
@@ -338,6 +344,7 @@ fn parse_code_types(input: &str) -> IResult<&str, CodeType> {
             parse_code_d9,
             parse_code_da,
             parse_code_db,
+            parse_code_dc,
         )),
         parse_code_e,
         parse_code_f,
@@ -346,6 +353,7 @@ fn parse_code_types(input: &str) -> IResult<&str, CodeType> {
 
 pub fn parse(input: &str) -> IResult<&str, Vec<CodeType>> {
     let (input, list) = separated_list1(newline, parse_code_types)(input)?;
+    let (input, _) = eof(input)?;
     Ok((input, list))
 }
 

@@ -216,6 +216,22 @@ impl<T: fmt::Debug> fmt::Debug for Arena<T> {
     }
 }
 
+impl<T: Default> Arena<T> {
+    /// Adds a new value to the arena using the given factory, passing in the
+    /// handle that is created.
+    pub fn append_recursive(&mut self, value: impl FnOnce(&mut Self, Handle<T>) -> T) -> Handle<T> {
+        let index = self.data.len();
+        self.data.push(T::default()); // make dummy value
+        let handle = Handle::from_usize(index);
+        let value = value(self, handle.clone());
+
+        // replace with actual value
+        self.data[index] = value;
+
+        handle
+    }
+}
+
 impl<T> Arena<T> {
     /// Create a new arena with no initial capacity allocated.
     pub const fn new() -> Self {

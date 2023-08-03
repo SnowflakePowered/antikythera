@@ -251,6 +251,12 @@ impl<A: AddressSize> Block<A> {
     }
 }
 
+impl<A: AddressSize> Default for Block<A> {
+    fn default() -> Self {
+        Self::new([])
+    }
+}
+
 impl<A: AddressSize> Display for Block<A> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         // for
@@ -287,7 +293,7 @@ impl<A: AddressSize> Display for Op<A> {
         match self {
             Op::NoOperation => f.write_str("noop"),
             Op::LoadImmediate { value, register } => {
-                f.write_fmt(format_args!("{register} = imm 0x{value:x?}"))
+                f.write_fmt(format_args!("{register} = im 0x{value:x?}"))
             }
             Op::Math {
                 rhs,
@@ -319,7 +325,7 @@ impl<A: AddressSize> Display for Op<A> {
             } => f.write_fmt(format_args!("{dest} = reg {width} {register}")),
             Op::WriteImmediate { value, dest } => f.write_fmt(format_args!("{dest} = {value}")),
             Op::WriteBuffer { value, dest } => {
-                f.write_fmt(format_args!("memcpy {dest} imm {value:?}"))
+                f.write_fmt(format_args!("memcpy {dest} im {value:?}"))
             }
             Op::MemoryCopy {
                 source,
@@ -385,41 +391,41 @@ pub enum Expr<A: AddressSize> {
 }
 
 macro_rules! expr {
-    ($a:ident, imm $op:expr) => {
-        expr!(imm $op)
+    ($a:ident, im $op:expr) => {
+        expr!(im $op)
     };
-    (imm $op:expr) => {
-        Expr::Literal(Operand::Immediate(Immediate::from($op)))
+    (im $op:expr) => {
+        $crate::ir::Expr::Literal($crate::ir::Operand::Immediate($crate::ir::Immediate::from($op)))
     };
-    ($a:ident, reg $op:expr) => {
-        expr!(reg $op)
+    ($a:ident, rx $op:expr) => {
+        expr!(rx $op)
     };
-    (reg $op:expr) => {
-        Expr::Literal(Operand::Register($op))
+    (rx $op:expr) => {
+        $crate::ir::Expr::Literal($crate::ir::Operand::Register($op))
     };
-    (load w $reg:expr) => {
-        Expr::Literal(Operand::Load($reg, Width::Word))
+    (ld w $reg:expr) => {
+        $crate::ir::Expr::Literal($crate::ir::Operand::Load($reg, $crate::ir::Width::Word))
     };
-    ($a:ident, load w $reg:expr) => {
-        expr!(load w $reg)
+    ($a:ident, ld w $reg:expr) => {
+        expr!(ld w $reg)
     };
-    (load h $reg:expr) => {
-        Expr::Literal(Operand::Load($reg, Width::Half))
+    (ld h $reg:expr) => {
+        $crate::ir::Expr::Literal($crate::ir::Operand::Load($reg, $crate::ir::Width::Half))
     };
-    ($a:ident, load h $reg:expr) => {
-        expr!(load h $reg)
+    ($a:ident, ld h $reg:expr) => {
+        expr!(ld h $reg)
     };
-    (load q $reg:expr) => {
-        Expr::Literal(Operand::Load($reg, Width::Quarter))
+    (ld q $reg:expr) => {
+        $crate::ir::Expr::Literal($crate::ir::Operand::Load($reg, $crate::ir::Width::Quarter))
     };
-    ($a:ident, load q $reg:expr) => {
-        expr!(load q $reg)
+    ($a:ident, ld q $reg:expr) => {
+        expr!(ld q $reg)
     };
-    (load b $reg:expr) => {
-        Expr::Literal(Operand::Load($reg, Width::Byte))
+    (ld b $reg:expr) => {
+        $crate::ir::Expr::Literal($crate::ir::Operand::Load($reg, $crate::ir::Width::Byte))
     };
-    ($a:ident, load b $reg:expr) => {
-        expr!(load b $reg)
+    ($a:ident, ld b $reg:expr) => {
+        expr!(ld b $reg)
     };
     ($a:ident, ($($lhs:tt)*) == ($($rhs:tt)*)) => {
         {
@@ -427,7 +433,7 @@ macro_rules! expr {
             let lhs = $a.append(lhs);
             let rhs = expr!($a, $($rhs)*);
             let rhs = $a.append(rhs);
-            Expr::Equal(lhs, rhs)
+            $crate::ir::Expr::Equal(lhs, rhs)
         }
     };
     ($a:ident, ($($lhs:tt)*) != ($($rhs:tt)*)) => {
@@ -436,9 +442,9 @@ macro_rules! expr {
             let lhs = $a.append(lhs);
             let rhs = expr!($a, $($rhs)*);
             let rhs = $a.append(rhs);
-            let eq = Expr::Equal(lhs, rhs);
+            let eq = $crate::ir::Expr::Equal(lhs, rhs);
             let eq = $a.append(eq);
-            Expr::Not(eq)
+            $crate::ir::Expr::Not(eq)
         }
     };
     ($a:ident, ($($lhs:tt)*) > ($($rhs:tt)*)) => {
@@ -447,7 +453,7 @@ macro_rules! expr {
             let lhs = $a.append(lhs);
             let rhs = expr!($a, $($rhs)*);
             let rhs = $a.append(rhs);
-            Expr::GreaterThan(lhs, rhs)
+            $crate::ir::Expr::GreaterThan(lhs, rhs)
         }
     };
     ($a:ident, ($($lhs:tt)*) >= ($($rhs:tt)*)) => {
@@ -456,7 +462,7 @@ macro_rules! expr {
             let lhs = $a.append(lhs);
             let rhs = expr!($a, $($rhs)*);
             let rhs = $a.append(rhs);
-            Expr::GreaterThanEqual(lhs, rhs)
+            $crate::ir::Expr::GreaterThanEqual(lhs, rhs)
         }
     };
     ($a:ident, ($($lhs:tt)*) < ($($rhs:tt)*)) => {
@@ -465,7 +471,7 @@ macro_rules! expr {
             let lhs = $a.append(lhs);
             let rhs = expr!($a, $($rhs)*);
             let rhs = $a.append(rhs);
-            Expr::LessThan(lhs, rhs)
+            $crate::ir::Expr::LessThan(lhs, rhs)
         }
     };
     ($a:ident, ($($lhs:tt)*) <= ($($rhs:tt)*)) => {
@@ -474,7 +480,7 @@ macro_rules! expr {
             let lhs = $a.append(lhs);
             let rhs = expr!($a, $($rhs)*);
             let rhs = $a.append(rhs);
-            Expr::LessThanEqual(lhs, rhs)
+            $crate::ir::Expr::LessThanEqual(lhs, rhs)
         }
     };
     ($a:ident, ($($lhs:tt)*) & ($($rhs:tt)*)) => {
@@ -483,7 +489,7 @@ macro_rules! expr {
             let lhs = $a.append(lhs);
             let rhs = expr!($a, $($rhs)*);
             let rhs = $a.append(rhs);
-            Expr::And(lhs, rhs)
+            $crate::ir::Expr::And(lhs, rhs)
         }
     };
     ($a:ident, ($($lhs:tt)*) | ($($rhs:tt)*)) => {
@@ -492,14 +498,14 @@ macro_rules! expr {
             let lhs = $a.append(lhs);
             let rhs = expr!($a, $($rhs)*);
             let rhs = $a.append(rhs);
-            Expr::Or(lhs, rhs)
+            $crate::ir::Expr::Or(lhs, rhs)
         }
     };
     ($a:ident, !$($lhs:tt)*) => {
         {
             let lhs = expr!($a, $($lhs)*);
             let lhs = $a.append(lhs);
-            Expr::Not(lhs)
+            $crate::ir::Expr::Not(lhs)
         }
     };
 }
@@ -600,7 +606,7 @@ mod test {
         let mut arena: Arena<Expr<u32>> = Arena::new();
 
         let expr: Expr<u32> = expr!(arena,
-            (load w reg) != (imm 1u8)
+            (ld w reg) != (im 1u8)
         );
         println!("{:?}", debug_expr(&arena, &expr))
     }
