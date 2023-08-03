@@ -228,10 +228,6 @@ pub enum Op<A: AddressSize> {
     /// Immediately stop execution of the program.
     Return,
 
-    /// Immediately stop execution of the current block, and
-    /// resume execution from the beginning of the current block.
-    Loop,
-
     /// Immediately stop execution of the program and notify the caller.
     /// This is generally used for operations not supported by the antikythera virtual machine.
     ///
@@ -254,13 +250,6 @@ impl<A: AddressSize> Block<A> {
 impl<A: AddressSize> Default for Block<A> {
     fn default() -> Self {
         Self::new([])
-    }
-}
-
-impl<A: AddressSize> Display for Block<A> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        // for
-        todo!();
     }
 }
 
@@ -345,7 +334,6 @@ impl<A: AddressSize> Display for Op<A> {
                 }
             }
             Op::Return => f.write_str("ret"),
-            Op::Loop => f.write_str("loop"),
             Op::Exception(e) => {
                 if let Some(e) = e {
                     f.write_fmt(format_args!("ex {e:?}"))
